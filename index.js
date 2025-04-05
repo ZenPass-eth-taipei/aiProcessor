@@ -173,7 +173,7 @@ app.post("/analyze-image-ghibli", upload.single("file"), async (req, res) => {
             content: [
               {
                 type: "text",
-                text: "share the prompt for ghibly style for this image make it detailed so that it catches all the details.",
+                text: "share the prompt for anime style for this image.",
               },
               {
                 type: "image_url",
