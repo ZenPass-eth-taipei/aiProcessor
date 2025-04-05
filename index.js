@@ -1,10 +1,15 @@
 require("dotenv").config();
 const axios = require("axios");
 const express = require("express");
+const multer = require("multer");
+const cors = require("cors");
+const fs = require("fs");
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const upload = multer({ dest: "uploads/" });
 
 // Middleware to parse JSON
+app.use(cors());
 app.use(express.json());
 
 // Basic route
@@ -21,8 +26,8 @@ app.get("/api/data", (req, res) => {
 app.post("/chat", async (req, res) => {
   // Input validation
   if (!req.body || !req.body.message) {
-    return res.status(400).json({ 
-      error: "Missing required field 'message' in request body" 
+    return res.status(400).json({
+      error: "Missing required field 'message' in request body",
     });
   }
 
@@ -30,8 +35,8 @@ app.post("/chat", async (req, res) => {
 
   // Validate OpenAI API key
   if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ 
-      error: "OpenAI API key is not configured" 
+    return res.status(500).json({
+      error: "OpenAI API key is not configured",
     });
   }
 
@@ -61,9 +66,73 @@ app.post("/chat", async (req, res) => {
     res.json({ reply });
   } catch (error) {
     console.error(error.response?.data || error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Error processing request",
-      details: error.response?.data?.error?.message || error.message
+      details: error.response?.data?.error?.message || error.message,
+    });
+  }
+});
+
+app.post("/analyze-image", upload.single("file"), async (req, res) => {
+  // Check if file was uploaded
+  if (!req.file) {
+    return res.status(400).json({
+      error:
+        "No file uploaded. Please upload an image file with field name 'file'",
+    });
+  }
+
+  const imagePath = req.file.path;
+
+  try {
+    // Validate file exists
+    if (!fs.existsSync(imagePath)) {
+      return res.status(400).json({ error: "File upload failed" });
+    }
+
+    const imageData = fs.readFileSync(imagePath, { encoding: "base64" });
+
+    // Clean up uploaded file
+    fs.unlinkSync(imagePath);
+
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe the image." },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageData}`,
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: 300,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json({ result: response.data.choices[0].message.content });
+  } catch (err) {
+    // Clean up file if it exists and there was an error
+    if (fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+    }
+    console.error(err.response?.data || err.message);
+    res.status(500).json({
+      error: "Failed to analyze image",
+      details: err.response?.data?.error?.message || err.message,
     });
   }
 });
